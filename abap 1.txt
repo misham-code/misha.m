@@ -29,6 +29,173 @@ FUNCTION /skn/f_so_st_get_delta.
 *"      WRONG_PARAMETERS
 *"      NO_DATA
 *"----------------------------------------------------------------------
+*&---------------------------------------------------------------------*
+*& Function Module: /SKN/F_SO_ST_GET_DELTA
+*&---------------------------------------------------------------------*
+*& Purpose:
+*&   This function module performs delta comparison between two
+*&   consecutive System Operations (SO) runs to identify differences
+*&   in their datasets. It uses an optimized merge algorithm to
+*&   efficiently detect new, deleted, or unchanged records between runs.
+*&
+*& Business Context:
+*&   Used in System Operations monitoring to track changes in data
+*&   between scheduled runs. Supports both automatic (latest runs) and
+*&   manual (specific run numbers) comparison modes.
+*&
+*&---------------------------------------------------------------------*
+*& Parameters:
+*&---------------------------------------------------------------------*
+*& IMPORTING:
+*&   SW_CLIENT         - Software client identifier (optional)
+*&   IM_SI_ID          - System Interface ID for the runs (optional)
+*&   IM_SI_VER         - System Interface version (optional)
+*&   IM_RUN_NO_TARGET  - Specific target (newer) run number (optional)
+*&   IM_RUN_NO_SOURCE  - Specific source (older) run number (optional)
+*&
+*& EXPORTING:
+*&   ST_ID             - System Task ID from target run
+*&   ST_DESC           - System Task description
+*&   START_DATE        - Target run start date
+*&   START_TIME        - Target run start time
+*&   ST_STATE          - System Task state
+*&   SI_ID             - System Interface ID used in comparison
+*&   SI_VER            - System Interface version used
+*&   END_DATE          - Target run end date
+*&   END_TIME          - Target run end time
+*&   SW_SY             - Software system identifier
+*&   SO_PROCESS        - System Operations process identifier
+*&   EX_MESSAGES       - Table of messages (info/warning/error)
+*&
+*& TABLES:
+*&   T_SELECT          - Selection criteria (optional)
+*&   SO_DATA_STRUCTURE - Field catalog structure for delta data
+*&   SO_DELTA_SOURCE   - Records that exist in source but not in target
+*&                       (i.e., deleted records)
+*&   SO_DELTA_TARGET   - Records that exist in target but not in source
+*&                       (i.e., new records)
+*&
+*& EXCEPTIONS:
+*&   WRONG_PARAMETERS  - Invalid input parameters or configuration error
+*&   NO_DATA           - No data available for comparison
+*&
+*&---------------------------------------------------------------------*
+*& Algorithm Overview:
+*&---------------------------------------------------------------------*
+*& The function implements a sophisticated delta detection algorithm
+*& using the following approach:
+*&
+*& 1. RUN IDENTIFICATION & VALIDATION
+*&    - If specific run numbers provided: validate they exist and match
+*&    - If no specific runs: automatically select two most recent runs
+*&    - Verify runs have same SI_ID and SI_VER for valid comparison
+*&    - Ensure minimum 2 completed runs available
+*&
+*& 2. DYNAMIC STRUCTURE GENERATION
+*&    - Retrieve field catalog from both source and target runs
+*&    - Generate dynamic data structures at runtime
+*&    - Ensures flexibility to handle varying data structures
+*&
+*& 3. DATA RETRIEVAL
+*&    - Load complete datasets from both runs
+*&    - Sort datasets to enable efficient merge algorithm
+*&    - Store metadata from target run for output
+*&
+*& 4. OPTIMIZED MERGE COMPARISON (O(n+m) complexity)
+*&    - Uses two-pointer merge technique on sorted data
+*&    - Single pass through both datasets
+*&    - Classifies records into three categories:
+*&      a) Records present in both: No change (not returned)
+*&      b) Records only in source: Deleted (SO_DELTA_SOURCE)
+*&      c) Records only in target: New/Modified (SO_DELTA_TARGET)
+*&
+*& 5. RESULT PREPARATION
+*&    - Populate delta tables with identified differences
+*&    - Generate informational messages with statistics
+*&    - Return metadata from target run
+*&
+*&---------------------------------------------------------------------*
+*& Performance Characteristics:
+*&---------------------------------------------------------------------*
+*&   Time Complexity:  O(n + m) where n and m are dataset sizes
+*&   Space Complexity: O(k) where k is number of delta records
+*&   Optimal for: Large sorted datasets with relatively small deltas
+*&
+*&---------------------------------------------------------------------*
+*& Usage Examples:
+*&---------------------------------------------------------------------*
+*&
+*& Example 1: Compare two most recent runs automatically
+*&   CALL FUNCTION '/SKN/F_SO_ST_GET_DELTA'
+*&     EXPORTING
+*&       sw_client    = 'CLIENT01'
+*&       im_si_id     = 'SI_001'
+*&       im_si_ver    = '1.0'
+*&     IMPORTING
+*&       st_id        = lv_task_id
+*&       ex_messages  = lt_messages
+*&     TABLES
+*&       so_data_structure = lt_structure
+*&       so_delta_source   = lt_deleted_records
+*&       so_delta_target   = lt_new_records
+*&     EXCEPTIONS
+*&       wrong_parameters = 1
+*&       no_data         = 2.
+*&
+*& Example 2: Compare specific run numbers
+*&   CALL FUNCTION '/SKN/F_SO_ST_GET_DELTA'
+*&     EXPORTING
+*&       sw_client         = 'CLIENT01'
+*&       im_run_no_source  = 100
+*&       im_run_no_target  = 101
+*&     IMPORTING
+*&       ex_messages  = lt_messages
+*&     TABLES
+*&       so_delta_source = lt_deleted_records
+*&       so_delta_target = lt_new_records
+*&     EXCEPTIONS
+*&       wrong_parameters = 1
+*&       no_data         = 2.
+*&
+*& Example 3: Get delta from specific source run to its successor
+*&   CALL FUNCTION '/SKN/F_SO_ST_GET_DELTA'
+*&     EXPORTING
+*&       sw_client        = 'CLIENT01'
+*&       im_run_no_source = 100
+*&     IMPORTING
+*&       ex_messages = lt_messages
+*&     TABLES
+*&       so_delta_target = lt_new_records.
+*&
+*&---------------------------------------------------------------------*
+*& Error Handling:
+*&---------------------------------------------------------------------*
+*&   All errors are reported via EX_MESSAGES table with message types:
+*&     'E' - Error: Critical issues preventing execution
+*&     'W' - Warning: Non-critical issues
+*&     'I' - Information: Status and progress updates
+*&
+*&   Function exits gracefully on errors without raising exceptions
+*&   (commented out RAISE statements for backward compatibility)
+*&
+*&---------------------------------------------------------------------*
+*& Dependencies:
+*&---------------------------------------------------------------------*
+*&   - Function Module: /SKN/F_SO_ST_GET_DATA
+*&     Purpose: Retrieve run data and metadata
+*&   - Function Module: /SKN/F_SO_GENERATE_STRUCT
+*&     Purpose: Generate dynamic data structures from field catalog
+*&   - Database Table: /SKN/T_SO_ST
+*&     Purpose: Store System Operations run information
+*&
+*&---------------------------------------------------------------------*
+*& Change History:
+*&---------------------------------------------------------------------*
+*& Date       | Author | Description
+*&---------------------------------------------------------------------*
+*& [Date]     | [Name] | Initial creation
+*&---------------------------------------------------------------------*
+
   " ===================================================================
   " CONSTANTS DEFINITION
   " ===================================================================
