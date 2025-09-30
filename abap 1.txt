@@ -1,3 +1,79 @@
+*"======================================================================
+*"  Function Module : /SKN/F_SO_ST_GET_DELTA
+*"  Purpose         : Compute delta between two Solution Outbound (SO) runs
+*"  Overview        :
+*"    Compares two finished SO runs (source = older, target = newer) and
+*"    returns records that exist only in target (inserted/new) and only in
+*"    source (deleted/missing) using an optimized merge on sorted data.
+*"    All relevant run metadata and a structured message log are exported.
+*"----------------------------------------------------------------------
+*"  Inputs (IMPORTING)
+*"    SW_CLIENT          - SO client identifier
+*"    IM_SI_ID           - Solution Instance ID (optional if run numbers provided)
+*"    IM_SI_VER          - Solution Instance version (optional if run numbers provided)
+*"    IM_RUN_NO_TARGET   - Explicit target run number (newer) [optional]
+*"    IM_RUN_NO_SOURCE   - Explicit source run number (older) [optional]
+*"
+*"  Inputs (TABLES)
+*"    T_SELECT           - Optional selection table forwarded to data retrieval
+*"
+*"  Outputs (EXPORTING)
+*"    ST_ID, ST_DESC, START_DATE, START_TIME, ST_STATE,
+*"    SI_ID, SI_VER, END_DATE, END_TIME, SW_SY, SO_PROCESS
+*"    EX_MESSAGES        - Message table with info/warning/error entries
+*"
+*"  Outputs (TABLES)
+*"    SO_DATA_STRUCTURE  - Field catalog (structure of SO data)
+*"    SO_DELTA_SOURCE    - Records present only in source run (deleted in target)
+*"    SO_DELTA_TARGET    - Records present only in target run (new in target)
+*"
+*"  Exceptions
+*"    WRONG_PARAMETERS   - Missing/invalid inputs or inconsistent runs
+*"    NO_DATA            - No suitable runs or no data available
+*"
+*"  Behavior and Rules
+*"  - If both IM_RUN_NO_SOURCE and IM_RUN_NO_TARGET are provided, their
+*"    SI_ID/SI_VER must match; otherwise processing stops with an error.
+*"  - If only one run is provided, its neighbor run is derived automatically.
+*"  - If no runs are provided, the two most recent finished runs are used.
+*"  - Only runs with state 'F' (Finished) are considered.
+*"
+*"  Algorithm
+*"  - Retrieves a field catalog from the source run and generates dynamic
+*"    structures for data handling.
+*"  - Loads source and target datasets, sorts them, then performs a single-pass
+*"    merge comparison on sorted internal tables.
+*"  - Time Complexity: O(n + m); Space Complexity: O(k) where k is delta size.
+*"
+*"  Messaging
+*"  - Informational messages log the selected runs and completion statistics.
+*"  - Error messages are appended to EX_MESSAGES and processing terminates early.
+*"
+*"  Usage Example (pseudo):
+*"    CALL FUNCTION '/SKN/F_SO_ST_GET_DELTA'
+*"      EXPORTING
+*"        sw_client        = lv_client
+*"        im_si_id         = lv_si_id
+*"        im_si_ver        = lv_si_ver
+*"      TABLES
+*"        t_select         = lt_select
+*"        so_data_structure= lt_fcat
+*"        so_delta_source  = lt_delta_src
+*"        so_delta_target  = lt_delta_tgt
+*"      EXCEPTIONS
+*"        wrong_parameters = 1
+*"        no_data          = 2
+*"        OTHERS           = 3.
+*"
+*"  Assumptions/Notes
+*"  - Data comparison relies on ABAP native structural comparison; ensure a
+*"    consistent key order for meaningful results.
+*"  - EXIT is used on errors with messages populated; exception raising lines
+*"    are intentionally commented but left as reference.
+*"
+*"  Change Log
+*"  - 2025-09-30: Added comprehensive documentation header.
+*"======================================================================
 FUNCTION /skn/f_so_st_get_delta.
 *"----------------------------------------------------------------------
 *"*"Local Interface:
