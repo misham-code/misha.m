@@ -39,6 +39,10 @@ FUNCTION /skn/f_so_st_get_delta.
              c_end_marker     TYPE c LENGTH 3 VALUE 'END',       " End of processing marker
              c_min_runs       TYPE i VALUE 2.                    " Minimum runs required
 
+  CONSTANTS: c_message_type_e TYPE /skn/e_message_type VALUE 'E', "  Error Message
+             c_message_type_w TYPE /skn/e_message_type VALUE 'W',  "  Warning Message
+             c_message_type_i TYPE /skn/e_message_type VALUE 'I'.  "  Information Message
+
   " ===================================================================
   " TYPE DEFINITIONS
   " ===================================================================
@@ -81,10 +85,7 @@ FUNCTION /skn/f_so_st_get_delta.
   " Function call management and error handling
   DATA: lv_function_rc         TYPE sy-subrc,                             " Function return code
         lv_message             TYPE string,                               " Error message text
-        ls_messages        TYPE  /skn/s_messages,           " Export Messages structure
-         c_message_type_e   TYPE /skn/e_message_type VALUE 'E', "  Error Message
-        c_message_type_w   TYPE /skn/e_message_type VALUE 'W',  "  Warning Message
-        c_message_type_i   TYPE /skn/e_message_type VALUE 'I'.  "  Information Message
+        ls_messages        TYPE  /skn/s_messages.           " Export Messages structure
 
   " Field symbols for dynamic data handling
   FIELD-SYMBOLS: <lt_source_data>   TYPE STANDARD TABLE,                  " Source dataset
@@ -115,9 +116,9 @@ FUNCTION /skn/f_so_st_get_delta.
     SELECT SINGLE si_id  si_ver
      FROM /skn/t_so_st
    INTO (lv_si_id_source, lv_si_ver_source)
-   WHERE st_state  = c_finished_state
-     AND sw_client = sw_client
-     AND run_no     = im_run_no_source.
+   WHERE st_state  = @c_finished_state
+     AND sw_client = @sw_client
+     AND run_no     = @im_run_no_source.
     IF sy-subrc <>  0.
       lv_message = |No source run  found for client { sw_client }, source run_no { im_run_no_source }|.
       ls_messages-message  = lv_message.
@@ -131,9 +132,9 @@ FUNCTION /skn/f_so_st_get_delta.
     SELECT SINGLE si_id  si_ver
      FROM /skn/t_so_st
    INTO (lv_si_id_target, lv_si_ver_target)
-   WHERE st_state  = c_finished_state
-     AND sw_client = sw_client
-     AND run_no     = im_run_no_target.
+   WHERE st_state  = @c_finished_state
+     AND sw_client = @sw_client
+     AND run_no     = @im_run_no_target.
     IF sy-subrc <>  0.
       lv_message = |No TARGET run  found for client { sw_client }, TARGET run_no { im_run_no_target }|.
       ls_messages-message  = lv_message.
@@ -175,10 +176,10 @@ FUNCTION /skn/f_so_st_get_delta.
     SELECT run_no
         FROM /skn/t_so_st
       INTO CORRESPONDING FIELDS OF TABLE lt_available_runs
-      WHERE st_state  = c_finished_state
-        AND sw_client = sw_client
-        AND si_id     = lv_si_id
-        AND si_ver    = lv_si_ver
+      WHERE st_state  = @c_finished_state
+        AND sw_client = @sw_client
+        AND si_id     = @lv_si_id
+        AND si_ver    = @lv_si_ver
       ORDER BY run_no ASCENDING.                                   " Sort by run number for processing
 
     " Validate that sufficient data exists for comparison
@@ -357,42 +358,8 @@ FUNCTION /skn/f_so_st_get_delta.
   ENDIF.
 
   " ===================================================================
-  " STEP 5: RETRIEVE FIELD CATALOG FROM target RUN
-  " ===================================================================
-
-  " Get structure definition from source run to ensure consistent comparison
-  " This ensures both datasets have the same field structure
-  CALL FUNCTION '/SKN/F_SO_ST_GET_DATA'
-    EXPORTING
-      sw_client         = sw_client
-      run_no            = ls_target_run-run_no
-      format_only       = c_format_only                         " Only retrieve metadata
-    TABLES
-      so_data_structure = lt_field_catalog
-    EXCEPTIONS
-      wrong_parameters  = 1
-      no_data           = 2
-      OTHERS            = 3.
-
-  lv_function_rc = sy-subrc.
-  IF lv_function_rc <> 0.
-    lv_message = |Failed to retrieve field catalog from source run { ls_target_run-run_no }. RC: { lv_function_rc }|.
-    ls_messages-message  = lv_message.
-    ls_messages-type = c_message_type_e.
-    APPEND ls_messages TO ex_messages.
-    EXIT.
-*    RAISE no_data.
-  ENDIF.
-
-  " Validate field catalog contains data
-  IF lines( lt_field_catalog ) = 0.
-    lv_message = |Empty field catalog retrieved from source run { ls_target_run-run_no }|.
-    ls_messages-message  = lv_message.
-    ls_messages-type = c_message_type_e.
-    APPEND ls_messages TO ex_messages.
-    EXIT.
-*    RAISE no_data.
-  ENDIF.
+  " STEP 5: (Removed) Redundant target field catalog retrieval
+  " Using the source run's field catalog for both source and target structures
 
   " ===================================================================
   " STEP 6: CREATE DYNAMIC DATA STRUCTURES for target  run
